@@ -43,8 +43,8 @@ GO
 CREATE TABLE PERSONAJE(
 
 	idPersonaje INT IDENTITY PRIMARY KEY,
-    alias VARCHAR(100),
-    nombre VARCHAR(100) NOT NULL,
+    alias VARCHAR(100) UNIQUE,
+    nombre VARCHAR(100) NOT NULL UNIQUE,
     recompensa DECIMAL(15,2) CHECK (recompensa >= 0) NOT NULL,
     esta_vivo BIT DEFAULT 1, --1 significa que esta vivo, 0 que no lo esta preferia hacer un booleano pero no existe la definicion como tal.
     edad INT CHECK (edad >= 0) NOT NULL,
@@ -59,7 +59,7 @@ GO
 
 CREATE TABLE FRUTA_DEL_DIABLO(
 
-	id INT IDENTITY PRIMARY KEY,
+	idFruta INT IDENTITY PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL UNIQUE, --No existen 2 frutas del diablo iguales (o eso esta escrito...).
     estado_despertar BIT DEFAULT 0, --0 significa que no esta despertada, 1 si.
     disponibilidad BIT DEFAULT 1, --1 significa que esta disponible , 0 que no.
@@ -152,7 +152,16 @@ CREATE TABLE BANDA_ENEMIGA (
     CHECK (id_banda_1 != id_banda_2)
 );
 
+CREATE TABLE BOUNTY_LOG(
+
+	logID INT IDENTITY PRIMARY KEY,
+	logAction TEXT NOT NULL
+
+);
+
 GO
+
+--TRIGERS
 
 INSERT INTO MAR (nombreMar) VALUES
 ('East Blue'),
@@ -167,7 +176,8 @@ VALUES
 ('Water 7', 'Húmedo', 'Alcalde Iceburg', 'Neutral', 2),
 ('Wano', 'Variable', 'Monosuke (Hijo de Oden-sama)', 'Aliados de Luffy', 3),
 ('South Blue', 'Frío', 'Desconocido', 'Neutral', 1),
-('Hachinosu', 'Tropical', 'Marshall D. Teach', 'Yonko', 3);
+('Hachinosu', 'Tropical', 'Marshall D. Teach', 'Yonko', 3),
+('Shimotsuki Village', 'Templado', 'Kosaburo Shimotsuki', 'Neutral', 1);
 
 GO
 
@@ -179,7 +189,7 @@ INSERT INTO HAKI (nombreHaki, descripcion) VALUES
 GO
 
 INSERT INTO PERSONAJE (alias, nombre, recompensa, esta_vivo, edad, genero, tipo_personaje, id_region) VALUES 
-('Sombrero de paja', 'Monkey D. Luffy', 3000000000.00, 1, 19, 'masculino', 'pirata', 3),
+('Sombrero de paja', 'Monkey D. Luffy', 3000000000.00, 1, 19, 'masculino', 'pirata', 1),
 ('Smoker', 'Smoker', 500000.00, 1, 38, 'masculino', 'marina', 1),
 ('Iceburg', 'Iceburg', 0.00, 1, 45, 'masculino', 'civil', 2),
 ('Law', 'Trafalgar D. Water Law', 3000000000.00, 1, 26, 'masculino', 'pirata', 3),
@@ -202,6 +212,29 @@ INSERT INTO BANDA_PIRATA (nombre, yonko, numero_integrantes, capitan) VALUES
 ('Kid Pirates', 0, 15, 5),
 ('Blackbeard Pirates', 1, 20, 6);
 
+GO
+
+UPDATE PIRATA SET
+id_banda = 1
+WHERE id_personaje = 1
+
+GO
+
+UPDATE PIRATA SET
+id_banda = 2
+WHERE id_personaje = 4
+
+GO
+
+UPDATE PIRATA SET
+id_banda = 3
+WHERE id_personaje = 5
+
+GO
+
+UPDATE PIRATA SET
+id_banda = 4
+WHERE id_personaje = 6
 GO
 
 INSERT INTO MARINA (id_personaje, cuartel, rango)
@@ -265,6 +298,141 @@ yonko = 1
 WHERE idBanda = (SELECT idBanda FROM BANDA_PIRATA WHERE capitan = (SELECT idPersonaje FROM PERSONAJE WHERE nombre = 'Monkey D. Luffy'))
 --Hacemos este UPDATE debido a que, por los ultimos acondecimientos de la serie. Actualmente Luffy es un emperador del MAR.
 
+GO
 
 --Advanced SELECT Queries.
 
+--JOIN
+
+SELECT P.nombre, P.recompensa, BP.nombre ,(SELECT P.nombre WHERE BP.capitan = P.idPersonaje) as 'capitan', M.nombreMar
+FROM PERSONAJE P
+JOIN PIRATA PT on PT.id_personaje = P.idPersonaje
+JOIN BANDA_PIRATA BP on BP.idBanda = PT.id_banda
+JOIN REGION R on R.idRegion = P.id_region
+JOIN MAR M on M.idMar = R.id_Mar
+ORDER BY P.recompensa;--Esta Querry sirve para ver informacion detallada de todos los piratas que tenemos registrados en el sistema.
+
+--SUBQUERRY
+
+SELECT P.idPersonaje, P.nombre, M.nombreMar, P.recompensa
+FROM PERSONAJE P
+JOIN REGION R on R.idRegion = P.id_region
+JOIN MAR M on M.idMar = R.id_Mar
+WHERE P.recompensa = (SELECT MAX(P2.recompensa) FROM PERSONAJE P2
+						JOIN REGION R2 ON R2.idRegion = P2.id_region
+						WHERE R2.id_Mar = M.idMar);
+
+--Nos muestra la mayor recompensa por mar y a quien le corresponde. Si coinciden varios Personajes se imprimen todos. 
+
+--GROUP BY
+
+SELECT P.tipo_personaje,COUNT(*) as CANTIDAD
+FROM PERSONAJE P
+WHERE P.esta_vivo = 1
+GROUP BY P.tipo_personaje;
+
+-- ORDER BY, DISTINCT
+
+SELECT DISTINCT(FD.id), P.nombre, P.recompensa, FD.nombre, FD.tipo
+FROM PERSONAJE P
+JOIN FRUTA_DEL_DIABLO FD on FD.id_personaje = P.idPersonaje
+WHERE P.idPersonaje IN (SELECT FD2.id_personaje FROM FRUTA_DEL_DIABLO FD2 WHERE FD2.disponibilidad = 0)
+ORDER BY FD.tipo,P.recompensa desc;
+--Lista todos los personajes con fruta del diablo, ordenados por tipo de fruta y recompensa descendente, sin repetir frutas.
+
+
+--COMPLEX FILTER
+
+SELECT BP.nombre
+FROM BANDA_PIRATA BP
+JOIN BANDA_ENEMIGA BE on BE.id_banda_1 = BP.idBanda OR BE.id_banda_2 = BP.idBanda
+WHERE BE.nivel_hostilidad > (SELECT AVG(nivel_hostilidad)
+							FROM BANDA_ENEMIGA);
+
+--Muestra todas las bandas enemigas cuyo nivel de hostilidad es mayor al promedio general de todos los conflictos.
+
+--PROCEDIMIENTOS
+GO
+
+CREATE OR ALTER PROCEDURE InsertarOActualizarPirata 
+(@alias VARCHAR(100), 
+@nombre VARCHAR(100), 
+@recompensa DECIMAL(15,2), 
+@edad INT, 
+@genero VARCHAR(20), 
+@region INT, 
+@objetivo TEXT, 
+@afiliado_a_yonko BIT,
+@bandaPirata as INT)
+AS
+BEGIN
+
+	DECLARE @idPersonaje as INT;
+
+	SELECT @idPersonaje = (SELECT idPersonaje FROM PERSONAJE WHERE alias = @alias OR nombre = @nombre)
+	
+	IF @idPersonaje IS NOT NULL
+	BEGIN
+
+		UPDATE PERSONAJE SET 
+        nombre = @nombre,
+		alias = @alias,
+        recompensa = @recompensa,
+        edad = @edad,
+        genero = @genero,
+        id_region = @region
+        WHERE idPersonaje = @idPersonaje;
+
+        UPDATE PIRATA SET 
+        objetivo_principal = @objetivo,
+        afiliado_a_yonko = @afiliado_a_yonko
+        WHERE id_personaje = @idPersonaje;
+
+	END
+	ELSE
+	BEGIN
+
+		INSERT INTO PERSONAJE (alias, nombre, recompensa, esta_vivo, edad, genero, tipo_personaje, id_region) VALUES 
+		(@alias, @nombre, @recompensa, 1, @edad, @genero, 'pirata', @region);
+
+        SET @idPersonaje = SCOPE_IDENTITY(); -- Recuperamos el ID recién generado
+
+        INSERT INTO PIRATA (id_personaje, objetivo_principal, afiliado_a_yonko, id_banda) VALUES 
+		(@idPersonaje, @objetivo, @afiliado_a_yonko, @bandaPirata);
+
+	END
+END; --Este procedimiento inserta un nuevo pirata (si no exite tambien genera un Personaje) o actualiza sus datos si ya existe. 
+
+GO
+
+EXEC InsertarOActualizarPirata 'El Cazador de Piratas','Roronoa Zoro',1111000000.00,21,'masculino',6,'Convertirse en el mejor espadachín del mundo',1,1;
+
+GO
+
+EXEC InsertarOActualizarPirata 'El rey del Inframundo','Roronoa Zoro',1111000000.00,21,'masculino',6,'Convertirse en el mejor espadachín del mundo',1,1;
+
+GO
+
+CREATE OR ALTER PROCEDURE ObtenerPersonajesConFiltro
+	
+	(@nombreMar VARCHAR(100),
+	@tipo_personaje VARCHAR(10),
+    @tiene_fruta BIT)
+	
+AS
+BEGIN
+
+	SELECT P.idPersonaje, P.nombre, P.tipo_personaje, M.nombreMar, FD.nombre AS fruta
+    FROM PERSONAJE P
+    JOIN REGION R ON P.id_region = R.idRegion
+    JOIN MAR M ON R.id_Mar = M.idMar
+    LEFT JOIN FRUTA_DEL_DIABLO FD ON P.idPersonaje = FD.id_personaje
+    WHERE 
+        (@nombreMar IS NULL OR M.nombreMar = @nombreMar)
+        AND (@tipo_personaje IS NULL OR P.tipo_personaje = @tipo_personaje)
+        AND (
+            @tiene_fruta IS NULL OR 
+            (@tiene_fruta = 1 AND FD.idFruta IS NOT NULL) OR 
+            (@tiene_fruta = 0 AND FD.idFruta IS NULL)
+        );
+END;
