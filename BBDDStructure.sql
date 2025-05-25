@@ -152,16 +152,94 @@ CREATE TABLE BANDA_ENEMIGA (
     CHECK (id_banda_1 != id_banda_2)
 );
 
-CREATE TABLE BOUNTY_LOG(
-
-	logID INT IDENTITY PRIMARY KEY,
-	logAction TEXT NOT NULL
-
-);
 
 GO
 
 --TRIGERS
+
+CREATE TABLE LOG_RECOMPENSAS (
+    id_log INT IDENTITY PRIMARY KEY,
+    id_personaje INT,
+    antigua_recompensa DECIMAL(15,2),
+    nueva_recompensa DECIMAL(15,2),
+    fecha_cambio DATETIME DEFAULT GETDATE()
+);
+
+GO
+
+CREATE OR ALTER TRIGGER Log_Recompensa
+ON PERSONAJE AFTER UPDATE
+AS
+BEGIN
+
+	DECLARE @recompensaAntes DECIMAL (15,2) = (SELECT deleted.recompensa FROM deleted)
+	DECLARE @recompensaDespues DECIMAL (15,2) = (SELECT inserted.recompensa FROM inserted)
+
+    IF ((@recompensaAntes != @recompensaDespues) OR (@recompensaDespues IS NOT NULL))
+    BEGIN
+        INSERT INTO LOG_RECOMPENSAS (id_personaje, antigua_recompensa, nueva_recompensa)
+        SELECT d.idPersonaje, d.recompensa, i.recompensa
+        FROM deleted d
+        JOIN inserted i ON d.idPersonaje = i.idPersonaje
+        WHERE d.recompensa != i.recompensa;
+    END
+END; --Log para cada vez que se actualice el bounty (recompensa) se agrege a la tabla de logs.
+
+GO
+
+CREATE OR ALTER TRIGGER TR_Delete_Conflictos_Banda
+ON BANDA_PIRATA INSTEAD OF DELETE
+AS
+BEGIN
+
+	DECLARE @idBanda as INT = (SELECT deleted.idBanda FROM deleted)
+	DECLARE @idCapitan as INT = (SELECT deleted.capitan FROM deleted)
+
+    DELETE FROM BANDA_ENEMIGA
+    WHERE id_banda_1 IN (SELECT idBanda FROM deleted)
+       OR id_banda_2 IN (SELECT idBanda FROM deleted)
+       OR ganador_id IN (SELECT idBanda FROM deleted);
+
+	UPDATE PIRATA SET
+	id_banda = null
+	WHERE id_banda = @idBanda
+
+	UPDATE PERSONAJE SET
+	esta_vivo = 0
+	WHERE idPersonaje = @idCapitan
+
+	UPDATE FRUTA_DEL_DIABLO SET
+	disponibilidad = 1
+	WHERE id_personaje = @idCapitan
+
+	DELETE FROM BANDA_PIRATA
+	WHERE idBanda = @idBanda
+
+	DELETE FROM HAKI_PERSONAJE
+	WHERE id_personaje = @idCapitan
+END; -- Trigger para borrar relaciones cuando una Banda es eliminada/borrada.
+
+GO
+
+CREATE OR ALTER TRIGGER AsociarBandaACapitanes
+ON BANDA_PIRATA AFTER INSERT
+AS
+BEGIN
+
+	DECLARE @idPirata as INT = (SELECT inserted.capitan FROM inserted)
+	DECLARE @idBanda as INT = (SELECT inserted.idBanda FROM inserted)
+	
+	UPDATE PIRATA SET
+	id_banda = @idBanda
+	WHERE id_personaje = @idPirata;
+
+	UPDATE BANDA_PIRATA SET
+	numero_integrantes = (SELECT COUNT(*) FROM PIRATA WHERE id_banda = @idBanda)
+	WHERE idBanda = @idBanda;
+    
+END; --Cuando creamos un pirata y es el capitan. La banda esta en null, porque aun no existe. Al crear la banda asignamos en Pirata la banada al capitan de esta misma. 
+
+GO
 
 INSERT INTO MAR (nombreMar) VALUES
 ('East Blue'),
@@ -207,34 +285,17 @@ INSERT INTO PIRATA (id_personaje, objetivo_principal, afiliado_a_yonko) VALUES
 GO
 
 INSERT INTO BANDA_PIRATA (nombre, yonko, numero_integrantes, capitan) VALUES 
-('Sombrero de Paja', 0, 10, 1),
-('Heart Pirates', 0, 8, 4),
-('Kid Pirates', 0, 15, 5),
+('Sombrero de Paja', 0, 10, 1);
+
+INSERT INTO BANDA_PIRATA (nombre, yonko, numero_integrantes, capitan) VALUES 
+('Heart Pirates', 0, 8, 4);
+
+INSERT INTO BANDA_PIRATA (nombre, yonko, numero_integrantes, capitan) VALUES 
+('Kid Pirates', 0, 15, 5);
+
+INSERT INTO BANDA_PIRATA (nombre, yonko, numero_integrantes, capitan) VALUES 
 ('Blackbeard Pirates', 1, 20, 6);
 
-GO
-
-UPDATE PIRATA SET
-id_banda = 1
-WHERE id_personaje = 1
-
-GO
-
-UPDATE PIRATA SET
-id_banda = 2
-WHERE id_personaje = 4
-
-GO
-
-UPDATE PIRATA SET
-id_banda = 3
-WHERE id_personaje = 5
-
-GO
-
-UPDATE PIRATA SET
-id_banda = 4
-WHERE id_personaje = 6
 GO
 
 INSERT INTO MARINA (id_personaje, cuartel, rango)
@@ -333,7 +394,7 @@ GROUP BY P.tipo_personaje;
 
 -- ORDER BY, DISTINCT
 
-SELECT DISTINCT(FD.id), P.nombre, P.recompensa, FD.nombre, FD.tipo
+SELECT DISTINCT(FD.idFruta), P.nombre, P.recompensa, FD.nombre, FD.tipo
 FROM PERSONAJE P
 JOIN FRUTA_DEL_DIABLO FD on FD.id_personaje = P.idPersonaje
 WHERE P.idPersonaje IN (SELECT FD2.id_personaje FROM FRUTA_DEL_DIABLO FD2 WHERE FD2.disponibilidad = 0)
@@ -405,7 +466,7 @@ END; --Este procedimiento inserta un nuevo pirata (si no exite tambien genera un
 
 GO
 
-EXEC InsertarOActualizarPirata 'El Cazador de Piratas','Roronoa Zoro',1111000000.00,21,'masculino',6,'Convertirse en el mejor espadachín del mundo',1,1;
+EXEC InsertarOActualizarPirata 'El Cazador de Piratas','Roronoa Zoro',1111000010.00,21,'masculino',6,'Convertirse en el mejor espadachín del mundo',1,1;
 
 GO
 
@@ -428,11 +489,18 @@ BEGIN
     JOIN MAR M ON R.id_Mar = M.idMar
     LEFT JOIN FRUTA_DEL_DIABLO FD ON P.idPersonaje = FD.id_personaje
     WHERE 
-        (@nombreMar IS NULL OR M.nombreMar = @nombreMar)
-        AND (@tipo_personaje IS NULL OR P.tipo_personaje = @tipo_personaje)
-        AND (
-            @tiene_fruta IS NULL OR 
+        (M.nombreMar = @nombreMar)
+        AND (P.tipo_personaje = @tipo_personaje)
+        AND ( 
             (@tiene_fruta = 1 AND FD.idFruta IS NOT NULL) OR 
-            (@tiene_fruta = 0 AND FD.idFruta IS NULL)
-        );
-END;
+            (@tiene_fruta = 0 AND FD.idFruta IS NULL));
+
+END;--Filtro especifico segun mar,tipo de Personaje y si tiene fruta o no.
+
+GO
+
+EXEC ObtenerPersonajesConFiltro 'East Blue','pirata',1;
+
+GO
+
+EXEC ObtenerPersonajesConFiltro 'East Blue','pirata',0;
