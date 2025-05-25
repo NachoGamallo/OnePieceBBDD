@@ -371,7 +371,9 @@ JOIN PIRATA PT on PT.id_personaje = P.idPersonaje
 JOIN BANDA_PIRATA BP on BP.idBanda = PT.id_banda
 JOIN REGION R on R.idRegion = P.id_region
 JOIN MAR M on M.idMar = R.id_Mar
-ORDER BY P.recompensa;--Esta Querry sirve para ver informacion detallada de todos los piratas que tenemos registrados en el sistema.
+ORDER BY P.recompensa;
+
+--Esta Querry sirve para ver informacion detallada de todos los piratas que tenemos registrados en el sistema.
 
 --SUBQUERRY
 
@@ -466,11 +468,12 @@ END; --Este procedimiento inserta un nuevo pirata (si no exite tambien genera un
 
 GO
 
-EXEC InsertarOActualizarPirata 'El Cazador de Piratas','Roronoa Zoro',1111000010.00,21,'masculino',6,'Convertirse en el mejor espadachín del mundo',1,1;
+EXEC InsertarOActualizarPirata 'El Cazador de Piratas','Roronoa Zoro',1111000000.00,21,'masculino',6,'Convertirse en el mejor espadachín del mundo',1,1;
 
 GO
 
-EXEC InsertarOActualizarPirata 'El rey del Inframundo','Roronoa Zoro',1111000000.00,21,'masculino',6,'Convertirse en el mejor espadachín del mundo',1,1;
+
+EXEC InsertarOActualizarPirata 'El rey del Inframundo','Roronoa Zoro',1111000010.00,21,'masculino',6,'Convertirse en el mejor espadachín del mundo',1,1;
 
 GO
 
@@ -504,3 +507,21 @@ EXEC ObtenerPersonajesConFiltro 'East Blue','pirata',1;
 GO
 
 EXEC ObtenerPersonajesConFiltro 'East Blue','pirata',0;
+
+SELECT * FROM BANDA_PIRATA
+SELECT * FROM BANDA_ENEMIGA
+SELECT * FROM PIRATA 
+SELECT * FROM PERSONAJE
+SELECT * FROM FRUTA_DEL_DIABLO
+
+
+DELETE FROM BANDA_PIRATA
+WHERE idBanda = 3
+
+SELECT * FROM BANDA_PIRATA
+SELECT * FROM BANDA_ENEMIGA
+SELECT * FROM PIRATA 
+SELECT * FROM PERSONAJE
+SELECT * FROM FRUTA_DEL_DIABLO
+
+--Probar trigger de borrado de banda. 
